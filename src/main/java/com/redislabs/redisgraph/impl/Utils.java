@@ -4,8 +4,11 @@ import org.apache.commons.text.translate.AggregateTranslator;
 import org.apache.commons.text.translate.CharSequenceTranslator;
 import org.apache.commons.text.translate.LookupTranslator;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * Utilities class
@@ -26,16 +29,13 @@ public class Utils {
     private Utils() {}
 
     /**
-     *
+     * Append the input string surrounded with quotation marks.
      * @param str - a string
-     * @return the input string surrounded with quotation marks, if needed
      */
-    private static String quoteString(String str){
-        StringBuilder sb = new StringBuilder(str.length()+2);
-        sb.append('"');
-        sb.append(str.replace("\"","\\\""));
-        sb.append('"');
-        return sb.toString();
+    private static void quoteString(StringBuilder sb, String str) {
+        str = str.replace("\"", "\\\"");
+        sb.ensureCapacity(sb.length() + str.length() + 2);
+        sb.append('"').append(str).append('"');
     }
 
 
@@ -68,43 +68,40 @@ public class Utils {
     public static String prepareQuery(String query, Map<String, Object> params){
         StringBuilder sb = new StringBuilder("CYPHER ");
         for(Map.Entry<String, Object> entry : params.entrySet()) {
-            String key = entry.getKey();
-            Object value = entry.getValue();
-            sb.append(key).append('=');
-            sb.append(valueToString(value));
+            sb.append(entry.getKey()).append('=');
+            valueToString(sb, entry.getValue());
             sb.append(' ');
         }
         sb.append(query);
         return sb.toString();
     }
 
-    private static String arrayToString(Object[] arr) {
-        StringBuilder sb = new StringBuilder().append('[');
-        sb.append(String.join(", ", Arrays.stream(arr).map(Utils::valueToString).collect(Collectors.toList())));
+    private static void arrayToString(StringBuilder sb, Object[] arr) {
+        sb.append('[');
+        if (arr.length > 0) {
+            valueToString(sb, arr[0]);
+            for (int i = 1; i < arr.length; i++) {
+                sb.append(',').append(' ').append(arr[i]);
+            }
+        }
         sb.append(']');
-        return sb.toString();
     }
 
-    private static String valueToString(Object value) {
-        if(value == null)
-            return "null";
-        
-        if(value instanceof String){
-            return quoteString((String) value);
+    private static void valueToString(StringBuilder sb, Object value) {
+        if (value == null) {
+            sb.append("null");
+        } else if (value instanceof String) {
+            quoteString(sb, (String) value);
+        } else if (value instanceof Character) {
+            quoteString(sb, ((Character) value).toString());
+        } else if (value instanceof Object[]) {
+            arrayToString(sb, (Object[]) value);
+        } else if (value instanceof List) {
+            List<Object> list = (List<Object>) value;
+            arrayToString(sb, list.toArray());
+        } else {
+            sb.append(value);
         }
-        if(value instanceof Character){
-            return quoteString(((Character)value).toString());
-        }
-
-        if(value instanceof Object[]){
-            return arrayToString((Object[]) value);
-
-        }
-        if(value instanceof List){
-            List<Object> list = (List<Object>)value;
-            return arrayToString(list.toArray());
-        }
-        return value.toString();
     }
 
     /**
@@ -114,27 +111,25 @@ public class Utils {
      * @param kwargs - procedure output arguments
      * @return formatter procedure call
      */
-    public static String prepareProcedure(String procedure, List<String> args  , Map<String, List<String>> kwargs){
-        args = args.stream().map( Utils::quoteString).collect(Collectors.toList());
-        StringBuilder queryStringBuilder =  new StringBuilder();
-        queryStringBuilder.append("CALL ").append(procedure).append('(');
-        int i = 0;
-        for (; i < args.size() - 1; i++) {
-            queryStringBuilder.append(args.get(i)).append(',');
+    public static String prepareProcedure(String procedure, List<String> args, Map<String, List<String>> kwargs) {
+        StringBuilder querySB = new StringBuilder(procedure.length() + 7);
+        querySB.append("CALL ").append(procedure).append('(');
+        if (!args.isEmpty()) {
+            quoteString(querySB, args.get(0));
+            for (int i = 1; i < args.size(); i++) {
+                querySB.append(',');
+                quoteString(querySB, args.get(i));
+            }
         }
-        if (i == args.size()-1) {
-            queryStringBuilder.append(args.get(i));
-        }
-        queryStringBuilder.append(')');
+        querySB.append(')');
         List<String> kwargsList = kwargs.getOrDefault("y", null);
-        if(kwargsList != null){
-            i = 0;
-            for (; i < kwargsList.size() - 1; i++) {
-                queryStringBuilder.append(kwargsList.get(i)).append(',');
+        if (kwargsList != null && !kwargsList.isEmpty()) {
+            querySB.append(kwargsList.get(0));
+            for (int i = 1; i < kwargsList.size(); i++) {
+                querySB.append(',').append(kwargsList.get(i));
 
             }
-            queryStringBuilder.append(kwargsList.get(i));
         }
-        return queryStringBuilder.toString();
+        return querySB.toString();
     }
 }
